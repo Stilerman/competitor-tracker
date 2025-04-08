@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Управление пользователями</h2>
+            </div>
+            <div class="card-body">
+                <h3>Добавление нового пользователя</h3>
+                <form id="add-user-form" action="/add_user" method="post" class="mb-4">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="username" class="form-label">Имя пользователя:</label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="password" class="form-label">Пароль:</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="password_confirm" class="form-label">Подтверждение пароля:</label>
+                                <input type="password" class="form-control" id="password_confirm" name="password_confirm" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Добавить пользователя</button>
+                </form>
+                
+                <hr>
+                
+                <h3>Имеющиеся пользователи</h3>
+                {% if users %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Имя пользователя</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>{{ user.id }}</td>
+                                <td>{{ user.username }}</td>
+                                <td>
+                                    {% if user.username != 'admin' %}
+                                    <button class="btn btn-sm btn-danger delete-user" data-id="{{ user.id }}">
+                                        <i class="fas fa-trash-alt"></i> Удалить
+                                    </button>
+                                    {% else %}
+                                    <button class="btn btn-sm btn-danger" disabled>
+                                        <i class="fas fa-trash-alt"></i> Нельзя удалить
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-warning">
+                    Пользователи не найдены. Добавьте пользователя с помощью формы выше.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Валидация формы
+        $('#add-user-form').submit(function(e) {
+            const password = $('#password').val();
+            const passwordConfirm = $('#password_confirm').val();
+            
+            if (password !== passwordConfirm) {
+                e.preventDefault();
+                Swal.fire({
+                    title: 'Ошибка',
+                    text: 'Пароли не совпадают',
+                    icon: 'error',
+                    confirmButtonText: 'ОК'
+                });
+            }
+        });
+        
+        // Обработка клика по кнопке удаления
+        $('.delete-user').click(function() {
+            const userId = $(this).data('id');
+            
+            Swal.fire({
+                title: 'Удаление пользователя',
+                text: 'Вы действительно хотите удалить этого пользователя?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Да, удалить',
+                cancelButtonText: 'Отмена'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Отправляем форму на удаление
+                    const form = $('<form>', {
+                        'method': 'post',
+                        'action': `/delete_user/${userId}`
+                    });
+                    
+                    form.appendTo('body').submit();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

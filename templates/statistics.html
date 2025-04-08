@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Статистика по конкурентам</h2>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-warning">{{ error }}</div>
+                {% else %}
+                <!-- Фильтры -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">Фильтры</div>
+                            <div class="card-body">
+                                <form action="/statistics" method="get" class="row g-3">
+                                    <div class="col-md-3">
+                                        <label for="competitor" class="form-label">Конкурент</label>
+                                        <select name="competitor" id="competitor" class="form-select">
+                                            <option value="all">Все конкуренты</option>
+                                            {% for stat in competitor_stats %}
+                                            <option value="{{ stat.competitor }}" 
+                                                {% if request.args.get('competitor') == stat.competitor %}selected{% endif %}>
+                                                {{ stat.competitor }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="start_date" class="form-label">Начальная дата</label>
+                                        <input type="date" name="start_date" id="start_date" class="form-control"
+                                               value="{{ request.args.get('start_date', '') }}">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="end_date" class="form-label">Конечная дата</label>
+                                        <input type="date" name="end_date" id="end_date" class="form-control"
+                                               value="{{ request.args.get('end_date', '') }}">
+                                    </div>
+                                    <div class="col-md-3 d-flex align-items-end">
+                                        <button type="submit" class="btn btn-primary w-100">Применить фильтры</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Общая статистика -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header">Общая информация</div>
+                            <div class="card-body">
+                                <h4>Всего статей: {{ total_articles }}</h4>
+                                <h5 class="mt-3">Распределение по конкурентам:</h5>
+                                <ul class="list-group mt-2">
+                                    {% for stat in competitor_stats %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ stat.competitor }}
+                                        <span class="badge bg-primary rounded-pill">{{ stat.count }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header">Распределение статей</div>
+                            <div class="card-body">
+                                <div id="competitor-chart" class="chart-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Графики -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">Динамика просмотров</div>
+                            <div class="card-body">
+                                <div id="views-chart" class="chart-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Топ статей -->
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">Топ-10 статей по просмотрам</div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table id="top-articles-table" class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Название</th>
+                                                <th>Конкурент</th>
+                                                <th>Просмотры</th>
+                                                <th>Дата публикации</th>
+                                                <th>Дата проверки</th>
+                                                <th>Ссылка</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for article in top_articles %}
+                                            <tr>
+                                                <td>{{ article.title }}</td>
+                                                <td>{{ article.competitor }}</td>
+                                                <td>{{ article.views }}</td>
+                                                <td>{{ article.formatted_published }}</td>
+                                                <td>{{ article.formatted_check_date }}</td>
+                                                <td>
+                                                    <a href="{{ article.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                        <i class="fas fa-external-link-alt"></i> Открыть
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not error %}
+<script>
+    $(document).ready(function() {
+        // Инициализируем таблицу с плагином DataTables
+        $('#top-articles-table').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/ru.json"
+            },
+            "order": [[2, "desc"]], // Сортировка по просмотрам по умолчанию
+            "pageLength": 25 // Показывать 25 записей на странице
+        });
+        
+        // Рендерим графики
+        var viewsChart = JSON.parse('{{ views_chart | safe }}');
+        Plotly.newPlot('views-chart', viewsChart.data, viewsChart.layout);
+        
+        var competitorChart = JSON.parse('{{ competitor_chart | safe }}');
+        Plotly.newPlot('competitor-chart', competitorChart.data, competitorChart.layout);
+    });
+</script>
+{% endif %}
+{% endblock %}

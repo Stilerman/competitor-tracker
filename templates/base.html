@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг конкурентов</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- DataTables -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <style>
+        .chart-container {
+            height: 400px;
+            margin-bottom: 30px;
+        }
+        body {
+            padding-top: 20px;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #parsing-log {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px dotted #ccc;
+            padding-bottom: 3px;
+        }
+        .progress-container {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .progress {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="mb-4">
+            <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+                <div class="container-fluid">
+                    <a class="navbar-brand" href="/">Мониторинг конкурентов</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="navbarNav">
+                        <ul class="navbar-nav me-auto">
+                            <li class="nav-item">
+                                <a class="nav-link" href="/"><i class="fas fa-home"></i> Главная</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/competitors"><i class="fas fa-users"></i> Конкуренты</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Статистика</a>
+                            </li>
+                            {% if current_user.username == 'admin' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/users"><i class="fas fa-user-cog"></i> Пользователи</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                        <ul class="navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-user-circle"></i> {{ current_user.username }}
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                                    <li><a class="dropdown-item" href="/change_password"><i class="fas fa-key"></i> Изменить пароль</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt"></i> Выйти</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+        </header>
+        
+        <!-- Флеш-сообщения -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+        
+        <footer class="mt-5 text-center text-muted">
+            <p>&copy; 2025 Мониторинг конкурентов</p>
+        </footer>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Socket.IO скрипт -->
+    <script>
+        $(document).ready(function() {
+            // Инициализация Socket.IO
+            const socket = io();
+            
+            // Получение логов парсинга
+            socket.on('parsing_log', function(data) {
+                const logContainer = $('#parsing-log');
+                if (logContainer.length) {
+                    const logEntry = $('<div class="log-entry"></div>').text(data.log);
+                    logContainer.append(logEntry);
+                    logContainer.scrollTop(logContainer[0].scrollHeight);
+                    
+                    // Обрабатываем прогресс, если в логе есть информация о нем
+                    const progressMatch = data.log.match(/Прогресс: (\d+)\/(\d+) \((\d+\.\d+)%\)/);
+                    if (progressMatch) {
+                        const current = parseInt(progressMatch[1]);
+                        const total = parseInt(progressMatch[2]);
+                        const percentage = parseFloat(progressMatch[3]);
+                        
+                        updateProgressBar(percentage);
+                    }
+                }
+            });
+            
+            // Обновление статуса парсинга
+            socket.on('parsing_status_update', function(data) {
+                const statusCell = $(`#status-${data.competitor}`);
+                if (statusCell.length) {
+                    if (data.is_running) {
+                        statusCell.html('<span class="badge bg-success">Активен</span>');
+                    } else {
+                        statusCell.html('<span class="badge bg-secondary">Неактивен</span>');
+                    }
+                }
+            });
+            
+            // Обработка завершения парсинга
+            socket.on('parsing_finished', function(data) {
+                showParsingFinished(data.task_id);
+            });
+            
+            // Функция для обновления прогресс-бара
+            function updateProgressBar(percentage) {
+                const progressBar = $('#parsing-progress-bar');
+                if (progressBar.length) {
+                    progressBar.css('width', percentage + '%');
+                    progressBar.attr('aria-valuenow', percentage);
+                    progressBar.text(percentage.toFixed(1) + '%');
+                }
+            }
+            
+            // Функция для отображения завершения парсинга
+            function showParsingFinished(taskId) {
+                const progressContainer = $('#progress-container');
+                if (progressContainer.length) {
+                    progressContainer.append('<div class="alert alert-success mt-3">Парсинг завершен!</div>');
+                    
+                    // Обновляем страницу через 3 секунды
+                    setTimeout(function() {
+                        location.reload();
+                    }, 3000);
+                }
+            }
+            
+            // Обработка кнопок запуска парсинга
+            $('.run-parser').click(function() {
+                const name = $(this).data('name');
+                const button = $(this);
+                
+                // Добавляем индикатор загрузки
+                button.prop('disabled', true);
+                button.html('<i class="fas fa-spinner fa-spin"></i> Запуск...');
+                
+                // Очищаем предыдущие логи
+                $('#parsing-log').empty();
+                
+                // Отображаем прогресс-бар
+                $('#progress-container').html(`
+                    <div class="progress">
+                        <div id="parsing-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" 
+                             style="width: 0%">0%</div>
+                    </div>
+                    <small class="text-muted">Прогресс выполнения парсинга</small>
+                `);
+                
+                // Отправляем запрос на запуск парсера
+                $.post('/manual_parse', { name: name })
+                    .done(function(data) {
+                        if (data.success) {
+                            $('#parsing-status').text('Парсинг запущен');
+                            
+                            // Показываем модальное окно с логами
+                            $('#parsingModal').modal('show');
+                            
+                            // Обновляем заголовок модального окна
+                            $('#parsingModalLabel').text(`Парсинг конкурента "${name}"`);
+                        } else {
+                            Swal.fire({
+                                title: 'Ошибка',
+                                text: data.error,
+                                icon: 'error',
+                                confirmButtonText: 'ОК'
+                            });
+                            
+                            // Восстанавливаем кнопку
+                            button.prop('disabled', false);
+                            button.html('<i class="fas fa-sync-alt"></i> Запустить');
+                        }
+                    })
+                    .fail(function(jqXHR, textStatus, errorThrown) {
+                        Swal.fire({
+                            title: 'Ошибка',
+                            text: `Не удалось запустить парсинг: ${errorThrown}`,
+                            icon: 'error',
+                            confirmButtonText: 'ОК'
+                        });
+                        
+                        // Восстанавливаем кнопку
+                        button.prop('disabled', false);
+                        button.html('<i class="fas fa-sync-alt"></i> Запустить');
+                    });
+            });
+        });
+    </script>
+    
+    <!-- Модальное окно для отображения прогресса парсинга -->
+    <div class="modal fade" id="parsingModal" tabindex="-1" aria-labelledby="parsingModalLabel" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="parsingModalLabel">Парсинг конкурента</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="parsing-status" class="alert alert-info">Парсинг в процессе...</div>
+                    
+                    <div id="progress-container" class="progress-container">
+                        <div class="progress">
+                            <div id="parsing-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" 
+                                style="width: 0%">0%</div>
+                        </div>
+                        <small class="text-muted">Прогресс выполнения парсинга</small>
+                    </div>
+                    
+                    <h6 class="mt-3">Логи парсинга:</h6>
+                    <div id="parsing-log"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

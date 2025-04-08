@@ -1,0 +1,422 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Редактирование конкурента: {{ name }}</h2>
+            </div>
+            <div class="card-body">
+                <form id="edit-competitor-form" action="/edit_competitor/{{ name }}" method="post">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Тип источника:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="source_type" id="source_type_rss" value="rss" 
+                                           {% if config.source_type == 'rss' %}checked{% endif %}>
+                                    <label class="form-check-label" for="source_type_rss">
+                                        RSS-лента
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="source_type" id="source_type_sitemap" value="sitemap"
+                                           {% if config.source_type == 'sitemap' %}checked{% endif %}>
+                                    <label class="form-check-label" for="source_type_sitemap">
+                                        XML-карта сайта (Sitemap)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="source_url" class="form-label">URL источника:</label>
+                                <div class="input-group">
+                                    <input type="url" class="form-control" id="source_url" name="source_url" value="{{ config.source_url }}" required>
+                                    <button type="button" class="btn btn-outline-primary" id="test-source">
+                                        Проверить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3" id="source-test-results" style="display: none;">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">Результаты проверки источника</div>
+                                <div class="card-body" id="source-test-output">
+                                    <!-- Здесь будут выводиться результаты проверки источника -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Тип селекторов:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="selector_type" id="selector_type_xpath" value="xpath" 
+                                           {% if config.selector_type == 'xpath' or not config.selector_type %}checked{% endif %}>
+                                    <label class="form-check-label" for="selector_type_xpath">
+                                        XPath
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="selector_type" id="selector_type_css" value="css"
+                                           {% if config.selector_type == 'css' %}checked{% endif %}>
+                                    <label class="form-check-label" for="selector_type_css">
+                                        CSS-селекторы
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="views_selector" class="form-label">Селектор для просмотров:</label>
+                                <input type="text" class="form-control" id="views_selector" name="views_selector" 
+                                       value="{{ config.views_selector if config.views_selector is defined else config.views_xpath }}" required>
+                                <small class="form-text text-muted xpath-hint" {% if config.selector_type == 'css' %}style="display: none;"{% endif %}>
+                                    Например: //div[@class='views-count']/text()
+                                </small>
+                                <small class="form-text text-muted css-hint" {% if config.selector_type != 'css' %}style="display: none;"{% endif %}>
+                                    Например: .views-count
+                                </small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="date_selector" class="form-label">Селектор для даты публикации:</label>
+                                <input type="text" class="form-control" id="date_selector" name="date_selector" 
+                                       value="{{ config.date_selector if config.date_selector is defined else config.date_xpath }}" required>
+                                <small class="form-text text-muted xpath-hint" {% if config.selector_type == 'css' %}style="display: none;"{% endif %}>
+                                    Например: //div[@class='date']/text()
+                                </small>
+                                <small class="form-text text-muted css-hint" {% if config.selector_type != 'css' %}style="display: none;"{% endif %}>
+                                    Например: .date
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label for="test_url" class="form-label">URL для проверки селекторов:</label>
+                                <input type="url" class="form-control" id="test_url" name="test_url">
+                                <small class="form-text text-muted">Введите URL статьи для проверки селекторов</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-info" id="test-views-selector">
+                                Проверить селектор для просмотров
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-info" id="test-date-selector">
+                                Проверить селектор для даты
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3" id="selector-test-results" style="display: none;">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">Результаты проверки селектора</div>
+                                <div class="card-body" id="selector-test-output">
+                                    <!-- Здесь будут выводиться результаты проверки селектора -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">История парсинга</div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <p><strong>Последний парсинг:</strong> {{ config.last_check if config.last_check else 'Не проводился' }}</p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p><strong>Последний полный парсинг:</strong> {{ config.last_full_parse if config.last_full_parse else 'Не проводился' }}</p>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-12 text-center">
+                                            <button type="button" class="btn btn-primary run-parser" data-name="{{ name }}" data-full="1">
+                                                <i class="fas fa-sync-alt"></i> Запустить полный парсинг
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="alert alert-info mt-2">
+                                        <i class="fas fa-info-circle"></i> Полный парсинг загрузит все страницы из источника и обновит информацию по уже спаршенным материалам.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                            <a href="/competitors" class="btn btn-secondary">Отмена</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Переключение подсказок при изменении типа селектора
+        $('input[name="selector_type"]').change(function() {
+            if ($(this).val() === 'xpath') {
+                $('.xpath-hint').show();
+                $('.css-hint').hide();
+            } else {
+                $('.xpath-hint').hide();
+                $('.css-hint').show();
+            }
+        });
+        
+        // Функция для отображения результатов проверки
+        function showTestResults(containerId, outputId, data) {
+            $(containerId).show();
+            let output = '';
+            
+            if (data.success) {
+                output += '<div class="alert alert-success">Проверка прошла успешно!</div>';
+                
+                if (data.count) {
+                    output += `<p>Найдено элементов: ${data.count}</p>`;
+                }
+                
+                if (data.results && data.results.length > 0) {
+                    output += '<h5>Результаты:</h5><ul>';
+                    data.results.forEach(result => {
+                        output += `<li>${result}</li>`;
+                    });
+                    output += '</ul>';
+                }
+                
+                if (data.entries && data.entries.length > 0) {
+                    output += '<h5>Записи:</h5><ul>';
+                    data.entries.forEach(entry => {
+                        if (entry.title) {
+                            output += `<li><strong>${entry.title}</strong><br>Ссылка: ${entry.link || entry.url}<br>Дата: ${entry.published || entry.lastupdated || 'Не указана'}</li>`;
+                        } else {
+                            output += `<li>URL: ${entry.url || entry.link}</li>`;
+                        }
+                    });
+                    output += '</ul>';
+                }
+            } else {
+                output += `<div class="alert alert-danger">Ошибка: ${data.error}</div>`;
+            }
+            
+            $(outputId).html(output);
+        }
+        
+        // Проверка источника
+        $('#test-source').click(function() {
+            const sourceType = $('input[name="source_type"]:checked').val();
+            const sourceUrl = $('#source_url').val();
+            
+            if (!sourceUrl) {
+                alert('Пожалуйста, введите URL источника');
+                return;
+            }
+            
+            const button = $(this);
+            button.prop('disabled', true);
+            button.html('<i class="fas fa-spinner fa-spin"></i>');
+            
+            // Определяем, какой эндпоинт использовать
+            const endpoint = sourceType === 'rss' ? '/test_rss' : '/test_sitemap';
+            const dataParam = sourceType === 'rss' ? 'rss_url' : 'sitemap_url';
+            
+            const data = {};
+            data[dataParam] = sourceUrl;
+            
+            $.post(endpoint, data)
+                .done(function(data) {
+                    showTestResults('#source-test-results', '#source-test-output', data);
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    $('#source-test-results').show();
+                    $('#source-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
+                })
+                .always(function() {
+                    button.prop('disabled', false);
+                    button.html('Проверить');
+                });
+        });
+        
+        // Проверка селектора для просмотров
+        $('#test-views-selector').click(function() {
+            const testUrl = $('#test_url').val();
+            const selector = $('#views_selector').val();
+            const selectorType = $('input[name="selector_type"]:checked').val();
+            
+            if (!testUrl || !selector) {
+                alert('Пожалуйста, введите URL для теста и селектор для просмотров');
+                return;
+            }
+            
+            const button = $(this);
+            button.prop('disabled', true);
+            button.html('<i class="fas fa-spinner fa-spin"></i>');
+            
+            $.post('/test_selector', { 
+                url: testUrl, 
+                selector: selector,
+                selector_type: selectorType
+            })
+                .done(function(data) {
+                    showTestResults('#selector-test-results', '#selector-test-output', data);
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    $('#selector-test-results').show();
+                    $('#selector-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
+                })
+                .always(function() {
+                    button.prop('disabled', false);
+                    button.html('Проверить селектор для просмотров');
+                });
+        });
+        
+        // Проверка селектора для даты
+        $('#test-date-selector').click(function() {
+            const testUrl = $('#test_url').val();
+            const selector = $('#date_selector').val();
+            const selectorType = $('input[name="selector_type"]:checked').val();
+            
+            if (!testUrl || !selector) {
+                alert('Пожалуйста, введите URL для теста и селектор для даты');
+                return;
+            }
+            
+            const button = $(this);
+            button.prop('disabled', true);
+            button.html('<i class="fas fa-spinner fa-spin"></i>');
+            
+            $.post('/test_selector', { 
+                url: testUrl, 
+                selector: selector,
+                selector_type: selectorType
+            })
+                .done(function(data) {
+                    showTestResults('#selector-test-results', '#selector-test-output', data);
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    $('#selector-test-results').show();
+                    $('#selector-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
+                })
+                .always(function() {
+                    button.prop('disabled', false);
+                    button.html('Проверить селектор для даты');
+                });
+        });
+        
+        // Кнопка полного парсинга
+        $('.run-parser').click(function() {
+            const name = $(this).data('name');
+            const fullParse = $(this).data('full') === 1;
+            const button = $(this);
+            
+            // Добавляем индикатор загрузки
+            button.prop('disabled', true);
+            button.html('<i class="fas fa-spinner fa-spin"></i> Запуск...');
+            
+            // Очищаем предыдущие логи
+            $('#parsing-log').empty();
+            
+            // Отображаем прогресс-бар
+            $('#progress-container').html(`
+                <div class="progress">
+                    <div id="parsing-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                        role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" 
+                        style="width: 0%">0%</div>
+                </div>
+                <small class="text-muted">Прогресс выполнения парсинга</small>
+            `);
+            
+            // Отправляем запрос на запуск парсера
+            $.post('/manual_parse', { 
+                name: name,
+                full_parse: fullParse ? 1 : 0
+            })
+                .done(function(data) {
+                    if (data.success) {
+                        $('#parsing-status').text('Парсинг запущен');
+                        
+                        // Показываем модальное окно с логами
+                        $('#parsingModal').modal('show');
+                        
+                        // Обновляем заголовок модального окна
+                        $('#parsingModalLabel').text(`${fullParse ? 'Полный парсинг' : 'Парсинг'} конкурента "${name}"`);
+                    } else {
+                        Swal.fire({
+                            title: 'Ошибка',
+                            text: data.error,
+                            icon: 'error',
+                            confirmButtonText: 'ОК'
+                        });
+                        
+                        // Восстанавливаем кнопку
+                        button.prop('disabled', false);
+                        button.html(`<i class="fas fa-sync-alt"></i> ${fullParse ? 'Запустить полный парсинг' : 'Запустить'}`);
+                    }
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    Swal.fire({
+                        title: 'Ошибка',
+                        text: `Не удалось запустить парсинг: ${errorThrown}`,
+                        icon: 'error',
+                        confirmButtonText: 'ОК'
+                    });
+                    
+                    // Восстанавливаем кнопку
+                    button.prop('disabled', false);
+                    button.html(`<i class="fas fa-sync-alt"></i> ${fullParse ? 'Запустить полный парсинг' : 'Запустить'}`);
+                });
+        });
+        
+        // Настраиваем Socket.IO для обновления статистики
+        const socket = io();
+        
+        // Обработчик завершения парсинга
+        socket.on('parsing_finished', function(data) {
+            // Показываем уведомление о завершении
+            $('#parsing-status').html('<div class="alert alert-success">Парсинг успешно завершен</div>');
+            
+            // Обновляем страницу через 3 секунды
+            setTimeout(function() {
+                location.reload();
+            }, 3000);
+        });
+        
+        // Обновление прогресса парсинга
+        socket.on('parsing_progress', function(data) {
+            const progressBar = $('#parsing-progress-bar');
+            progressBar.css('width', data.percentage + '%');
+            progressBar.attr('aria-valuenow', data.percentage);
+            progressBar.text(data.percentage.toFixed(1) + '%');
+        });
+    });
+</script>
+{% endblock %}
