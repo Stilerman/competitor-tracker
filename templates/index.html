@@ -1,276 +1,232 @@
-{% extends 'base.html' %}
-
-{% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h2>Мониторинг конкурентов - Дашборд</h2>
-                <a href="/competitors" class="btn btn-primary"><i class="fas fa-plus"></i> Добавить конкурента</a>
-            </div>
-            <div class="card-body">
-                <p class="lead">Добро пожаловать в систему мониторинга конкурентов!</p>
-                
-                <p>Эта система позволяет отслеживать статьи конкурентов и анализировать их эффективность.</p>
-                
-                <h3 class="mt-4">Статистика по конкурентам:</h3>
-                
-                <div id="stats-container">
-                    {% if stats %}
-                    <div class="table-responsive mt-3">
-                        <table id="competitors-table" class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Конкурент</th>
-                                    <th>Новых статей (посл. обход)</th>
-                                    <th>Всего статей</th>
-                                    <th>Статей за 24 часа</th>
-                                    <th>Последний парсинг</th>
-                                    <th>Последний полный парсинг</th>
-                                    <th>Статус парсинга</th>
-                                    <th>Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for stat in stats %}
-                                <tr>
-                                    <td>{{ stat.name }}</td>
-                                    <td>{{ stat.last_articles }}</td>
-                                    <td>{{ stat.total_articles }}</td>
-                                    <td>{{ stat.articles_24h }}</td>
-                                    <td>{{ stat.last_check }}</td>
-                                    <td>{{ stat.last_full_parse }}</td>
-                                    <td id="status-{{ stat.name }}">
-                                        {% if stat.parsing_status == "Активен" %}
-                                        <span class="badge bg-success">Активен</span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">Неактивен</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="btn-group">
-                                            <a href="/statistics?competitor={{ stat.name }}" class="btn btn-sm btn-info">
-                                                <i class="fas fa-chart-line"></i> Статистика
-                                            </a>
-                                            <button class="btn btn-sm btn-success run-parser" data-name="{{ stat.name }}" data-full="0" {% if stat.parsing_status == "Активен" %}disabled{% endif %}>
-                                                <i class="fas fa-sync-alt"></i> Запустить
-                                            </button>
-                                            <a href="/edit_competitor/{{ stat.name }}" class="btn btn-sm btn-warning">
-                                                <i class="fas fa-edit"></i> Редактировать
-                                            </a>
-                                            <button class="btn btn-sm btn-danger delete-competitor" data-name="{{ stat.name }}">
-                                                <i class="fas fa-trash-alt"></i> Удалить
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="alert alert-warning">
-                        Конкуренты не найдены. <a href="/competitors" class="alert-link">Добавьте конкурента</a> для начала мониторинга.
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг Конкурентов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        .status-active { color: green; font-weight: bold; }
+        .status-inactive { color: grey; }
+        .status-paused { color: orange; font-weight: bold; }
+        .status-details { font-size: 0.8em; color: #6c757d; }
+        .parsing-log-container { max-height: 400px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin-top: 10px; font-family: monospace; font-size: 0.9em; white-space: pre-wrap; }
+        .progress-bar-container { margin-top: 5px; }
+        .flash-messages { margin-top: 15px; }
+        .pause-btn, .resume-btn { display: none; } /* Скрыты по умолчанию */
+        tr.status-active .pause-btn { display: inline-block !important; } /* Показываем Паузу для активных */
+        tr.status-paused .resume-btn { display: inline-block !important; } /* Показываем Продолжить для паузы */
+        .action-buttons button { min-width: 85px; margin-bottom: 5px;}
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+         <div class="container-fluid">
+             <a class="navbar-brand" href="{{ url_for('index') }}">Мониторинг</a>
+             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+             <div class="collapse navbar-collapse" id="navbarNav">
+                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                     <li class="nav-item"><a class="nav-link {% if request.endpoint=='index' %}active{% endif %}" aria-current="page" href="{{ url_for('index') }}">Главная</a></li>
+                     {% if current_user.can('competitors') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='competitors' or request.endpoint=='edit_competitor' %}active{% endif %}" href="{{ url_for('competitors') }}">Конкуренты</a></li>{% endif %}
+                     {% if current_user.can('statistics') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='statistics' %}active{% endif %}" href="{{ url_for('statistics') }}">Статистика</a></li>{% endif %}
+                     {% if current_user.can('users') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='users' or request.endpoint=='edit_user' %}active{% endif %}" href="{{ url_for('users') }}">Пользователи</a></li>{% endif %}
+                     {% if current_user.can('proxies') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='proxies_test_page' %}active{% endif %}" href="{{ url_for('proxies_test_page') }}">Прокси</a></li>{% endif %}
+                 </ul>
+                 <ul class="navbar-nav ms-auto">
+                     <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownUser" role="button" data-bs-toggle="dropdown"><i class="bi bi-person-circle"></i> {{ current_user.username }}</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('change_password') }}">Сменить пароль</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">Выйти <i class="bi bi-box-arrow-right"></i></a></li>
+                        </ul>
+                    </li>
+                 </ul>
+             </div>
         </div>
-    </div>
-</div>
-{% endblock %}
+    </nav>
 
-{% block scripts %}
-<script>
-    $(document).ready(function() {
-        // Инициализируем таблицу с плагином DataTables
-        const table = $('#competitors-table').DataTable({
-            "language": {
-                "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/ru.json"
-            },
-            "order": [[1, "desc"]] // Сортировка по количеству статей за последний обход
-        });
-        
-        // Функция для обновления статистики
-        function refreshStats() {
-            $.get('/refresh_stats', function(data) {
-                if (data.success) {
-                    // Перерисовываем таблицу
-                    table.clear();
-                    data.stats.forEach(function(stat) {
-                        // Формируем статус
-                        let statusHtml = stat.parsing_status === "Активен" 
-                            ? '<span class="badge bg-success">Активен</span>'
-                            : '<span class="badge bg-secondary">Неактивен</span>';
-                        
-                        // Формируем кнопки действий
-                        let actionsHtml = `
-                            <div class="btn-group">
-                                <a href="/statistics?competitor=${stat.name}" class="btn btn-sm btn-info">
-                                    <i class="fas fa-chart-line"></i> Статистика
-                                </a>
-                                <button class="btn btn-sm btn-success run-parser" data-name="${stat.name}" data-full="0" ${stat.parsing_status === "Активен" ? 'disabled' : ''}>
-                                    <i class="fas fa-sync-alt"></i> Запустить
-                                </button>
-                                <a href="/edit_competitor/${stat.name}" class="btn btn-sm btn-warning">
-                                    <i class="fas fa-edit"></i> Редактировать
-                                </a>
-                                <button class="btn btn-sm btn-danger delete-competitor" data-name="${stat.name}">
-                                    <i class="fas fa-trash-alt"></i> Удалить
-                                </button>
-                            </div>
-                        `;
-                        
-                        // Добавляем строку
-                        table.row.add([
-                            stat.name,
-                            stat.last_articles,
-                            stat.total_articles,
-                            stat.articles_24h,
-                            stat.last_check,
-                            stat.last_full_parse,
-                            statusHtml,
-                            actionsHtml
-                        ]);
-                    });
-                    
-                    // Перерисовываем таблицу
-                    table.draw();
-                    
-                    // Повторно привязываем обработчики событий после обновления таблицы
-                    attachEventHandlers();
-                }
+    <div class="container mt-4">
+        <h1>Статус парсинга конкурентов</h1>
+
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <div class="table-responsive mt-3">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Конкурент</th>
+                        <th>Последняя проверка</th>
+                        <th>Последний полный парсинг</th>
+                        <th>Статус / Прогресс</th>
+                        <th style="min-width: 280px;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="competitor-stats-body">
+                    {# Заполняется JS #}
+                </tbody>
+            </table>
+        </div>
+
+        <h2>Логи парсинга</h2>
+        <div id="parsing-log-container" class="parsing-log-container">Ожидание запуска парсинга...</div>
+
+    </div> <!-- /container -->
+
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Подтверждение</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">Удалить конкурента <strong id="competitorNameToDelete"></strong>?</div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button><form id="deleteCompetitorForm" method="POST" action="" style="display: inline;"><button type="submit" class="btn btn-danger">Удалить</button></form></div></div></div></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const socket = io();
+            const logContainer = document.getElementById('parsing-log-container');
+            const competitorStatsBody = document.getElementById('competitor-stats-body');
+            const taskCompetitorMap = {};
+
+            function addLogMessage(message, type = 'info') {
+                const le = document.createElement('div'); le.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                if(type==='error') le.style.color='red'; else if(type==='warning') le.style.color='orange';
+                logContainer.insertBefore(le, logContainer.firstChild);
+                if (logContainer.childElementCount===2 && logContainer.lastChild.textContent.includes('Ожидание')) { logContainer.removeChild(logContainer.lastChild); }
+                while (logContainer.childElementCount > 200) { logContainer.removeChild(logContainer.lastChild); }
+            }
+            function showFlashMessage(message, category = 'info') {
+                 const fc = document.querySelector('.flash-messages'); if (!fc) return;
+                 const ad = document.createElement('div'); ad.className = `alert alert-${category} alert-dismissible fade show`; ad.setAttribute('role', 'alert');
+                 ad.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`; fc.appendChild(ad); setTimeout(() => { bootstrap.Alert.getOrCreateInstance(ad)?.close(); }, 5000);
+            }
+            function storeTaskCompetitor(taskId, competitorName) { if(taskId) taskCompetitorMap[taskId] = competitorName; }
+            function getCompetitorNameByTaskId(taskId) { return taskCompetitorMap[taskId]; }
+
+            function updateProgressBar(name, current, total, percentage) {
+                 const pc = document.getElementById(`progress-${name}`); if (!pc) return;
+                 const pb = pc.querySelector('.progress-bar'); const pt = pc.querySelector('.progress-text');
+                 const ps = percentage.toFixed(1) + '%'; pb.style.width = ps; pb.setAttribute('aria-valuenow', percentage);
+                 if(pt) pt.textContent = `Обработано ${current} / ${total}`; pc.style.display = 'block';
+            }
+             function hideProgressBar(name) {
+                const pc = document.getElementById(`progress-${name}`); if (!pc) return;
+                const pb = pc.querySelector('.progress-bar'); const pt = pc.querySelector('.progress-text');
+                pb.style.width='0%'; pb.setAttribute('aria-valuenow','0'); if(pt) pt.textContent=''; pc.style.display='none';
+            }
+
+             function updateStatsTable(stats) {
+                 if (!competitorStatsBody) return; competitorStatsBody.innerHTML = '';
+                 if (stats && stats.length > 0) {
+                     stats.forEach(comp => {
+                         storeTaskCompetitor(comp.task_id, comp.name);
+                         const row = document.createElement('tr'); row.id = `row-${comp.name}`;
+                         let statusClass = 'status-inactive'; let statusText = comp.parsing_status;
+                         if (comp.parsing_status === 'Активен') statusClass = 'status-active';
+                         else if (comp.parsing_status === 'На паузе') statusClass = 'status-paused';
+                         row.className = statusClass;
+
+                         row.innerHTML = `
+                             <td><a href="/edit_competitor/${comp.name}" title="Редактировать">${comp.name}</a></td>
+                             <td class="last-check">${comp.last_check || 'N/A'}</td>
+                             <td class="last-full-parse">${comp.last_full_parse_info || 'N/A'}</td>
+                             <td class="parsing-status-cell">
+                                 <span class="parsing-status ${statusClass}">${statusText}</span>
+                                 <div class="status-details">${comp.parsing_details || ''}</div>
+                                 <div class="progress-bar-container" id="progress-${comp.name}" style="display: none;">
+                                     <div class="progress" style="height: 10px;"><div class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: 0%;"></div></div>
+                                     <div class="progress-text small text-muted"></div>
+                                 </div>
+                             </td>
+                             <td class="action-buttons">
+                                 <button class="btn btn-sm btn-success parse-btn" data-name="${comp.name}" data-full="0" title="Инкр."><i class="bi bi-play-fill"></i> Инкр.</button>
+                                 <button class="btn btn-sm btn-warning parse-btn ms-1" data-name="${comp.name}" data-full="1" title="Полный"><i class="bi bi-arrow-clockwise"></i> Полн.</button>
+                                 <button class="btn btn-sm btn-secondary pause-btn ms-1" data-task-id="${comp.task_id || ''}" title="Пауза"><i class="bi bi-pause-fill"></i> Пауза</button>
+                                 <button class="btn btn-sm btn-info resume-btn ms-1" data-task-id="${comp.task_id || ''}" title="Продолжить"><i class="bi bi-play-btn-fill"></i> Продо..</button>
+                                 <button class="btn btn-sm btn-danger delete-btn ms-1" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal" data-competitor-name="${comp.name}" title="Удалить"><i class="bi bi-trash"></i></button>
+                             </td>`;
+                         competitorStatsBody.appendChild(row);
+                         // Восстановление прогресс-бара НЕ здесь, а при получении события parsing_progress
+                         // Скрытие/показ кнопок управляется CSS классами на TR
+                     });
+                     addEventListeners();
+                 } else { competitorStatsBody.innerHTML = '<tr><td colspan="5" class="text-center">Нет конкурентов.</td></tr>'; }
+             }
+
+             // Функция больше не нужна, кнопки управляются CSS
+             // function updateRowButtons(rowElement, status) { ... }
+
+            function addEventListeners() {
+                 document.querySelectorAll('.parse-btn').forEach(b => { b.removeEventListener('click', handleParseButtonClick); b.addEventListener('click', handleParseButtonClick); });
+                 document.querySelectorAll('.pause-btn').forEach(b => { b.removeEventListener('click', handlePauseButtonClick); b.addEventListener('click', handlePauseButtonClick); });
+                 document.querySelectorAll('.resume-btn').forEach(b => { b.removeEventListener('click', handleResumeButtonClick); b.addEventListener('click', handleResumeButtonClick); });
+                 document.querySelectorAll('.delete-btn').forEach(b => { b.removeEventListener('click', handleDeleteModalTrigger); b.addEventListener('click', handleDeleteModalTrigger); });
+             }
+
+             function handleParseButtonClick(event) {
+                 const btn = event.currentTarget; const name = btn.dataset.name; const full = btn.dataset.full === '1';
+                 disableRowButtons(name, true, "Запуск..."); addLogMessage(`Запрос ${full?'полного':'инкр.'} парсинга "${name}"...`);
+                 fetch('/manual_parse', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`name=${encodeURIComponent(name)}&full_parse=${full?'1':'0'}` })
+                 .then(res => res.json()).then(data => {
+                     if(data.success){ addLogMessage(data.message||`Парсинг "${name}" запущен.`,'info'); storeTaskCompetitor(data.task_id, name); socket.emit('get_stats'); }
+                     else{ addLogMessage(`Ошибка запуска "${name}": ${data.error}`,'error'); showFlashMessage(data.error,'danger'); disableRowButtons(name,false); hideProgressBar(name); }
+                 }).catch(err => { console.error('Ошибка парсинга:', err); addLogMessage(`Сеть "${name}": ${err}`,'error'); showFlashMessage(`Сеть: ${err}`,'danger'); disableRowButtons(name,false); hideProgressBar(name); });
+             }
+            function handlePauseButtonClick(event) {
+                const btn = event.currentTarget; const taskId = btn.dataset.taskId; if (!taskId) return; const name = getCompetitorNameByTaskId(taskId);
+                disableRowButtons(name, true, "Пауза..."); addLogMessage(`Запрос паузы Task ${taskId.substring(0,6)}...`);
+                fetch(`/pause_parse/${taskId}`, {method:'POST'}).then(res => res.json()).then(data => {
+                    if(data.success){ addLogMessage(data.message,'info'); showFlashMessage(data.message,'success'); }
+                    else{ addLogMessage(`Ошибка паузы: ${data.error}`,'error'); showFlashMessage(data.error,'danger'); }
+                    socket.emit('get_stats'); // Обновляем статус
+                }).catch(err => { console.error('Ошибка паузы:', err); addLogMessage(`Сеть(пауза): ${err}`,'error'); showFlashMessage(`Сеть: ${err}`,'danger'); socket.emit('get_stats'); });
+            }
+             function handleResumeButtonClick(event) {
+                const btn = event.currentTarget; const taskId = btn.dataset.taskId; if (!taskId) return; const name = getCompetitorNameByTaskId(taskId);
+                disableRowButtons(name, true, "Возобновление..."); addLogMessage(`Запрос возобновления Task ${taskId.substring(0,6)}...`);
+                fetch(`/resume_parse/${taskId}`, {method:'POST'}).then(res => res.json()).then(data => {
+                    if(data.success){ addLogMessage(data.message,'info'); showFlashMessage(data.message,'success'); }
+                    else{ addLogMessage(`Ошибка возобновления: ${data.error}`,'error'); showFlashMessage(data.error,'danger'); }
+                    socket.emit('get_stats'); // Обновляем статус
+                }).catch(err => { console.error('Ошибка возобновления:', err); addLogMessage(`Сеть(возобн.): ${err}`,'error'); showFlashMessage(`Сеть: ${err}`,'danger'); socket.emit('get_stats'); });
+            }
+             function disableRowButtons(competitorName, disabled, title = '') {
+                  const row = document.getElementById(`row-${competitorName}`); if (!row) return;
+                  row.querySelectorAll('.action-buttons button').forEach(button => {
+                       button.disabled = disabled;
+                       if(disabled){ button.setAttribute('data-original-title',button.title); button.title=title; }
+                       else{ button.title = button.getAttribute('data-original-title') || button.title; }
+                  });
+             }
+            const deleteModalEl = document.getElementById('deleteConfirmModal');
+            if(deleteModalEl) { deleteModalEl.addEventListener('show.bs.modal', function (event) { const btn = event.relatedTarget; const name = btn.getAttribute('data-competitor-name'); deleteModalEl.querySelector('#competitorNameToDelete').textContent = name; deleteModalEl.querySelector('#deleteCompetitorForm').action = `/delete_competitor/${encodeURIComponent(name)}`; }); }
+            function handleDeleteModalTrigger(event) {}
+
+            // --- Socket.IO Слушатели ---
+            socket.on('connect', () => { console.log('Socket.IO OK'); addLogMessage('Сервер подключен.', 'info'); socket.emit('get_stats'); });
+            socket.on('disconnect', () => { console.log('Socket.IO Off'); addLogMessage('Сервер отключен.', 'error'); });
+            socket.on('connect_error', (err) => { console.error('Socket.IO Error:', err); addLogMessage(`Ошибка соединения: ${err.message}`, 'error'); });
+            socket.on('parsing_log', (data) => { addLogMessage(`[${data.task_id.substring(0, 6)}] ${data.log}`); });
+            socket.on('parsing_progress', (data) => { updateProgressBar(data.name, data.current, data.total, data.percentage); });
+            socket.on('parsing_finished', (data) => {
+                 const name = getCompetitorNameByTaskId(data.task_id);
+                 addLogMessage(`Парсинг [${data.task_id.substring(0, 6)}] завершен (Код: ${data.return_code})`, data.return_code === 0 ? 'info' : 'error');
+                 if (name) { hideProgressBar(name); } socket.emit('get_stats');
             });
-        }
-        
-        // Функция для привязки обработчиков событий
-        function attachEventHandlers() {
-            // Обработка клика по кнопке удаления
-            $('.delete-competitor').off('click').on('click', function() {
-                const name = $(this).data('name');
-                
-                Swal.fire({
-                    title: 'Удаление конкурента',
-                    text: `Вы действительно хотите удалить конкурента "${name}"?`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#d33',
-                    cancelButtonColor: '#3085d6',
-                    confirmButtonText: 'Да, удалить',
-                    cancelButtonText: 'Отмена'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        // Отправляем форму на удаление
-                        const form = $('<form>', {
-                            'method': 'post',
-                            'action': `/delete_competitor/${name}`
-                        });
-                        
-                        form.appendTo('body').submit();
-                    }
-                });
-            });
-            
-            // Обработка клика по кнопке запуска парсера
-            $('.run-parser').off('click').on('click', function() {
-                const name = $(this).data('name');
-                const fullParse = $(this).data('full') === 1;
-                const button = $(this);
-                
-                // Добавляем индикатор загрузки
-                button.prop('disabled', true);
-                button.html('<i class="fas fa-spinner fa-spin"></i> Запуск...');
-                
-                // Очищаем предыдущие логи
-                $('#parsing-log').empty();
-                
-                // Отображаем прогресс-бар
-                $('#progress-container').html(`
-                    <div class="progress">
-                        <div id="parsing-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                            role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" 
-                            style="width: 0%">0%</div>
-                    </div>
-                    <small class="text-muted">Прогресс выполнения парсинга</small>
-                `);
-                
-                // Отправляем запрос на запуск парсера
-                $.post('/manual_parse', { 
-                    name: name,
-                    full_parse: fullParse ? 1 : 0
-                })
-                    .done(function(data) {
-                        if (data.success) {
-                            $('#parsing-status').text('Парсинг запущен');
-                            
-                            // Показываем модальное окно с логами
-                            $('#parsingModal').modal('show');
-                            
-                            // Обновляем заголовок модального окна
-                            $('#parsingModalLabel').text(`${fullParse ? 'Полный парсинг' : 'Парсинг'} конкурента "${name}"`);
-                            
-                            // Обновляем статус в таблице
-                            $(`#status-${name}`).html('<span class="badge bg-success">Активен</span>');
-                        } else {
-                            Swal.fire({
-                                title: 'Ошибка',
-                                text: data.error,
-                                icon: 'error',
-                                confirmButtonText: 'ОК'
-                            });
-                            
-                            // Восстанавливаем кнопку
-                            button.prop('disabled', false);
-                            button.html(`<i class="fas fa-sync-alt"></i> ${fullParse ? 'Полный парсинг' : 'Запустить'}`);
-                        }
-                    })
-                    .fail(function(jqXHR, textStatus, errorThrown) {
-                        Swal.fire({
-                            title: 'Ошибка',
-                            text: `Не удалось запустить парсинг: ${errorThrown}`,
-                            icon: 'error',
-                            confirmButtonText: 'ОК'
-                        });
-                        
-                        // Восстанавливаем кнопку
-                        button.prop('disabled', false);
-                        button.html(`<i class="fas fa-sync-alt"></i> ${fullParse ? 'Полный парсинг' : 'Запустить'}`);
-                    });
-            });
-        }
-        
-        // Первоначальная привязка обработчиков
-        attachEventHandlers();
-        
-        // Настраиваем Socket.IO для обновления статистики
-        const socket = io();
-        
-        // Обработчик обновления статистики
-        socket.on('refresh_stats', function() {
-            refreshStats();
+            socket.on('stats_update', (data) => { console.log('Обновление статистики:', data); updateStatsTable(data.stats); });
+            socket.on('error_message', (data) => { console.error('Сервер:', data.message); addLogMessage(`Ошибка сервера: ${data.message}`, 'error'); showFlashMessage(data.message, 'danger'); });
+
+            // Первичная загрузка
+            socket.emit('get_stats');
         });
-        
-        // Обработчик завершения парсинга
-        socket.on('parsing_finished', function(data) {
-            // Обновляем статистику после завершения парсинга
-            refreshStats();
-            
-            // Показываем уведомление о завершении
-            $('#parsing-status').html('<div class="alert alert-success">Парсинг успешно завершен</div>');
-            
-            // Автоматически закрываем модальное окно через 3 секунды
-            setTimeout(function() {
-                $('#parsingModal').modal('hide');
-            }, 3000);
-        });
-        
-        // Обновление прогресса парсинга
-        socket.on('parsing_progress', function(data) {
-            const progressBar = $('#parsing-progress-bar');
-            progressBar.css('width', data.percentage + '%');
-            progressBar.attr('aria-valuenow', data.percentage);
-            progressBar.text(data.percentage.toFixed(1) + '%');
-        });
-    });
-</script>
-{% endblock %}
+    </script>
+</body>
+</html>

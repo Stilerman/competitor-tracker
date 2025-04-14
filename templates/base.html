@@ -92,6 +92,11 @@
                                 <a class="nav-link" href="/users"><i class="fas fa-user-cog"></i> Пользователи</a>
                             </li>
                             {% endif %}
+							{% if current_user.can('proxies') %}
+<li class="nav-item">
+    <a class="nav-link {% if request.endpoint == 'proxies_test_page' %}active{% endif %}" href="{{ url_for('proxies_test_page') }}">Прокси</a>
+</li>
+{% endif %}
                         </ul>
                         <ul class="navbar-nav">
                             <li class="nav-item dropdown">

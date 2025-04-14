@@ -1,398 +1,167 @@
-{% extends 'base.html' %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление Конкурентами</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+             <a class="navbar-brand" href="{{ url_for('index') }}">Мониторинг</a>
+             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+             <div class="collapse navbar-collapse" id="navbarNav">
+                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                     <li class="nav-item"><a class="nav-link {% if request.endpoint=='index' %}active{% endif %}" href="{{ url_for('index') }}">Главная</a></li>
+                     {% if current_user.can('competitors') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='competitors' or request.endpoint=='edit_competitor' %}active{% endif %}" aria-current="page" href="{{ url_for('competitors') }}">Конкуренты</a></li>{% endif %}
+                     {% if current_user.can('statistics') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='statistics' %}active{% endif %}" href="{{ url_for('statistics') }}">Статистика</a></li>{% endif %}
+                     {% if current_user.can('users') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='users' or request.endpoint=='edit_user' %}active{% endif %}" href="{{ url_for('users') }}">Пользователи</a></li>{% endif %}
+                     {% if current_user.can('proxies') %}<li class="nav-item"><a class="nav-link {% if request.endpoint=='proxies_test_page' %}active{% endif %}" href="{{ url_for('proxies_test_page') }}">Прокси</a></li>{% endif %}
+                 </ul>
+                 <ul class="navbar-nav ms-auto">
+                     <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownUser" role="button" data-bs-toggle="dropdown"><i class="bi bi-person-circle"></i> {{ current_user.username }}</a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('change_password') }}">Сменить пароль</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">Выйти <i class="bi bi-box-arrow-right"></i></a></li>
+                        </ul>
+                    </li>
+                 </ul>
+             </div>
+        </div>
+    </nav>
 
-{% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h2>Управление конкурентами</h2>
-            </div>
+    <div class="container mt-4">
+        <h1>Управление Конкурентами</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="card mt-4">
+            <div class="card-header">Добавить нового конкурента</div>
             <div class="card-body">
-                <h3>Добавление нового конкурента</h3>
-                <form id="add-competitor-form" action="/add_competitor" method="post" class="mb-4">
+                <form action="{{ url_for('add_competitor') }}" method="POST">
+                    <input type="hidden" name="source_type" value="sitemap">
                     <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="name" class="form-label">Название конкурента:</label>
-                                <input type="text" class="form-control" id="name" name="name" required>
-                            </div>
+                        <div class="col-md-8">
+                            <label for="name" class="form-label">Название <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" required>
                         </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label class="form-label">Тип источника:</label>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="source_type" id="source_type_rss" value="rss" checked>
-                                    <label class="form-check-label" for="source_type_rss">
-                                        RSS-лента
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="source_type" id="source_type_sitemap" value="sitemap">
-                                    <label class="form-check-label" for="source_type_sitemap">
-                                        XML-карта сайта (Sitemap)
-                                    </label>
-                                </div>
+                         <div class="col-md-4 align-self-end">
+                             <div class="form-check form-switch mb-1">
+                                <input class="form-check-input" type="checkbox" role="switch" id="use_proxy" name="use_proxy">
+                                <label class="form-check-label" for="use_proxy">Использовать прокси</label>
                             </div>
-                        </div>
+                         </div>
                     </div>
-                    
+                    <div class="mb-3">
+                        <label for="sitemap_urls" class="form-label">URL Карт Сайта (Sitemap XML) <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="sitemap_urls" name="sitemap_urls" rows="3" placeholder="Один URL на строку..." required></textarea>
+                    </div>
+
+                     <hr>
+                     <h5 class="card-title">Настройки Парсинга Страниц</h5>
+                     <div class="mb-3">
+                         <label for="testUrl" class="form-label">URL для тестирования селекторов</label>
+                         <input type="url" class="form-control" id="testUrl" placeholder="https://example.com/some-article-page">
+                     </div>
+
                     <div class="row mb-3">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="source_url" class="form-label">URL источника:</label>
-                                <div class="input-group">
-                                    <input type="url" class="form-control" id="source_url" name="source_url" required>
-                                    <button type="button" class="btn btn-outline-primary" id="test-source">
-                                        Проверить
-                                    </button>
-                                </div>
-                            </div>
+                        <div class="col-md-8">
+                            <label for="views_selectors" class="form-label">Селекторы просмотров <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="views_selectors" name="views_selectors" rows="3" placeholder="Один селектор на строку..." required></textarea>
+                            <div class="form-text">Парсер попробует каждый по порядку.</div>
                         </div>
+                         <div class="col-md-4">
+                            <label for="views_selector_type" class="form-label">Тип</label>
+                            <select class="form-select" id="views_selector_type" name="views_selector_type">
+                                <option value="xpath" selected>XPath</option>
+                                <option value="css">CSS</option>
+                            </select>
+                             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="testViewsSelectorBtn">Тест 1-го</button>
+                             <div id="viewsTestResult" class="form-text mt-1"></div>
+                         </div>
                     </div>
-                    
-                    <div class="row mb-3" id="source-test-results" style="display: none;">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header">Результаты проверки источника</div>
-                                <div class="card-body" id="source-test-output">
-                                    <!-- Здесь будут выводиться результаты проверки источника -->
-                                </div>
-                            </div>
+
+                     <div class="row mb-3">
+                        <div class="col-md-8">
+                             <label for="date_selectors" class="form-label">Селекторы даты <span class="text-danger">*</span></label>
+                             <textarea class="form-control" id="date_selectors" name="date_selectors" rows="3" placeholder="Один селектор на строку..." required></textarea>
+                            <div class="form-text">Парсер попробует каждый по порядку.</div>
                         </div>
+                         <div class="col-md-4">
+                            <label for="date_selector_type" class="form-label">Тип</label>
+                             <select class="form-select" id="date_selector_type" name="date_selector_type">
+                                <option value="xpath" selected>XPath</option>
+                                <option value="css">CSS</option>
+                            </select>
+                             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="testDateSelectorBtn">Тест 1-го</button>
+                             <div id="dateTestResult" class="form-text mt-1"></div>
+                         </div>
                     </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label class="form-label">Тип селекторов:</label>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="selector_type" id="selector_type_xpath" value="xpath" checked>
-                                    <label class="form-check-label" for="selector_type_xpath">
-                                        XPath
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="selector_type" id="selector_type_css" value="css">
-                                    <label class="form-check-label" for="selector_type_css">
-                                        CSS-селекторы
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="views_selector" class="form-label">Селектор для просмотров:</label>
-                                <input type="text" class="form-control" id="views_selector" name="views_selector" required>
-                                <small class="form-text text-muted xpath-hint">Например: //div[@class='views-count']/text()</small>
-                                <small class="form-text text-muted css-hint" style="display: none;">Например: .views-count</small>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="date_selector" class="form-label">Селектор для даты публикации:</label>
-                                <input type="text" class="form-control" id="date_selector" name="date_selector" required>
-                                <small class="form-text text-muted xpath-hint">Например: //div[@class='date']/text()</small>
-                                <small class="form-text text-muted css-hint" style="display: none;">Например: .date</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="test_url" class="form-label">URL для проверки селекторов:</label>
-                                <input type="url" class="form-control" id="test_url" name="test_url">
-                                <small class="form-text text-muted">Введите URL статьи для проверки селекторов</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <button type="button" class="btn btn-info" id="test-views-selector">
-                                Проверить селектор для просмотров
-                            </button>
-                        </div>
-                        <div class="col-md-6">
-                            <button type="button" class="btn btn-info" id="test-date-selector">
-                                Проверить селектор для даты
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3" id="selector-test-results" style="display: none;">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header">Результаты проверки селектора</div>
-                                <div class="card-body" id="selector-test-output">
-                                    <!-- Здесь будут выводиться результаты проверки селектора -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
+
                     <button type="submit" class="btn btn-primary">Добавить конкурента</button>
                 </form>
-                
-                <hr>
-                
-                <h3>Имеющиеся конкуренты</h3>
-                {% if competitors %}
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>Тип источника</th>
-                                <th>URL источника</th>
-                                <th>Тип селекторов</th>
-                                <th>Селектор просмотров</th>
-                                <th>Селектор даты</th>
-                                <th>Последняя проверка</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for name, config in competitors.items() %}
-                            <tr>
-                                <td>{{ name }}</td>
-                                <td>
-                                    {% if config.source_type == 'rss' %}
-                                        RSS-лента
-                                    {% elif config.source_type == 'sitemap' %}
-                                        XML-карта
-                                    {% else %}
-                                        {{ config.source_type }}
-                                    {% endif %}
-                                </td>
-                                <td class="text-truncate" style="max-width: 150px;">
-                                    <a href="{{ config.source_url }}" target="_blank" title="{{ config.source_url }}">
-                                        {{ config.source_url }}
-                                    </a>
-                                </td>
-                                <td>
-                                    {% if config.selector_type == 'xpath' %}
-                                        XPath
-                                    {% elif config.selector_type == 'css' %}
-                                        CSS
-                                    {% else %}
-                                        {{ config.selector_type }}
-                                    {% endif %}
-                                </td>
-                                <td class="text-truncate" style="max-width: 150px;">
-                                    {{ config.views_selector if config.views_selector is defined else config.views_xpath }}
-                                </td>
-                                <td class="text-truncate" style="max-width: 150px;">
-                                    {{ config.date_selector if config.date_selector is defined else config.date_xpath }}
-                                </td>
-                                <td>{{ config.last_check if config.last_check else 'Не проводилась' }}</td>
-                                <td>
-                                    <div class="btn-group">
-                                        <a href="/edit_competitor/{{ name }}" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-edit"></i> Редактировать
-                                        </a>
-                                        <button class="btn btn-sm btn-danger delete-competitor" data-name="{{ name }}">
-                                            <i class="fas fa-trash-alt"></i> Удалить
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="alert alert-warning">
-                    Конкуренты не найдены. Добавьте конкурента с помощью формы выше.
-                </div>
-                {% endif %}
             </div>
         </div>
-    </div>
-</div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-    $(document).ready(function() {
-        // Переключение подсказок при изменении типа селектора
-        $('input[name="selector_type"]').change(function() {
-            if ($(this).val() === 'xpath') {
-                $('.xpath-hint').show();
-                $('.css-hint').hide();
-            } else {
-                $('.xpath-hint').hide();
-                $('.css-hint').show();
-            }
-        });
-        
-        // Функция для отображения результатов проверки
-        function showTestResults(containerId, outputId, data) {
-            $(containerId).show();
-            let output = '';
-            
-            if (data.success) {
-                output += '<div class="alert alert-success">Проверка прошла успешно!</div>';
-                
-                if (data.count) {
-                    output += `<p>Найдено элементов: ${data.count}</p>`;
-                }
-                
-                if (data.results && data.results.length > 0) {
-                    output += '<h5>Результаты:</h5><ul>';
-                    data.results.forEach(result => {
-                        output += `<li>${result}</li>`;
-                    });
-                    output += '</ul>';
-                }
-                
-                if (data.entries && data.entries.length > 0) {
-                    output += '<h5>Записи:</h5><ul>';
-                    data.entries.forEach(entry => {
-                        if (entry.title) {
-                            output += `<li><strong>${entry.title}</strong><br>Ссылка: ${entry.link || entry.url}<br>Дата: ${entry.published || entry.lastupdated || 'Не указана'}</li>`;
-                        } else {
-                            output += `<li>URL: ${entry.url || entry.link}</li>`;
-                        }
-                    });
-                    output += '</ul>';
-                }
-            } else {
-                output += `<div class="alert alert-danger">Ошибка: ${data.error}</div>`;
-            }
-            
-            $(outputId).html(output);
+        <h2 class="mt-5">Существующие конкуренты</h2>
+        {% if competitors %}
+            <ul class="list-group mt-3">
+                {% for name, config in competitors.items() %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ name }}</strong>
+                            {% if config.get('use_proxy') %}
+                                <span class="badge bg-info text-dark ms-1" title="Прокси вкл."><i class="bi bi-shield-lock"></i></span>
+                            {% endif %}
+                            <br>
+                            <small class="text-muted">
+                                Карты: {{ config.sitemap_urls | length }} |
+                                V:{{ config.views_selector_type[:1] | upper if config.views_selector_type else '?' }}({{ config.views_selectors | length }}) |
+                                D:{{ config.date_selector_type[:1] | upper if config.date_selector_type else '?' }}({{ config.date_selectors | length }}) |
+                                Посл.пр: {{ config.last_check | format_datetime if config.last_check else 'N/A' }}
+                            </small>
+                        </div>
+                        <div>
+                            <a href="{{ url_for('edit_competitor', name=name) }}" class="btn btn-sm btn-outline-primary me-2"><i class="bi bi-pencil-square"></i> Ред.</a>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="mt-3 text-center">Нет конкурентов.</p>
+        {% endif %}
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+         function testSelector(selectorsTextAreaId, resultDivId, testUrlId, selectorTypeSelectId) {
+            const ta=document.getElementById(selectorsTextAreaId); const rd=document.getElementById(resultDivId); const tu=document.getElementById(testUrlId); const st=document.getElementById(selectorTypeSelectId);
+            const txt=ta.value.trim(); const url=tu.value.trim(); const type=st.value;
+            rd.innerHTML='<span class="text-muted">Тест...</span>'; rd.classList.remove('text-success','text-danger','text-warning');
+            const sel=txt.split('\n').map(s => s.trim()).filter(s => s)[0];
+            if (!sel || !url) { rd.innerHTML='<span class="text-danger">Нужен URL/селектор.</span>'; return; }
+            if (!url.startsWith('http')) { rd.innerHTML='<span class="text-danger">Неверный URL.</span>'; return; }
+            fetch("{{ url_for('test_selector_route') }}",{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`url=${encodeURIComponent(url)}&selector=${encodeURIComponent(sel)}&selector_type=${type}`})
+            .then(res=>res.json()).then(d=>{ if(d.success){ if(d.count>0){rd.innerHTML=`<span class="text-success">OK! ${d.count}<br><small class="text-muted">1st: ${JSON.stringify(d.results[0])}</small></span>`;}else{rd.innerHTML=`<span class="text-warning">Не найдено.</span>`;}} else{rd.innerHTML=`<span class="text-danger">Ошибка: ${d.error}</span>`;} }).catch(err=>{ console.error("Ошибка:",err); rd.innerHTML=`<span class="text-danger">Сеть: ${err}</span>`; });
         }
-        
-        // Проверка источника
-        $('#test-source').click(function() {
-            const sourceType = $('input[name="source_type"]:checked').val();
-            const sourceUrl = $('#source_url').val();
-            
-            if (!sourceUrl) {
-                alert('Пожалуйста, введите URL источника');
-                return;
-            }
-            
-            const button = $(this);
-            button.prop('disabled', true);
-            button.html('<i class="fas fa-spinner fa-spin"></i>');
-            
-            // Определяем, какой эндпоинт использовать
-            const endpoint = sourceType === 'rss' ? '/test_rss' : '/test_sitemap';
-            const dataParam = sourceType === 'rss' ? 'rss_url' : 'sitemap_url';
-            
-            const data = {};
-            data[dataParam] = sourceUrl;
-            
-            $.post(endpoint, data)
-                .done(function(data) {
-                    showTestResults('#source-test-results', '#source-test-output', data);
-                })
-                .fail(function(jqXHR, textStatus, errorThrown) {
-                    $('#source-test-results').show();
-                    $('#source-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
-                })
-                .always(function() {
-                    button.prop('disabled', false);
-                    button.html('Проверить');
-                });
-        });
-        
-        // Проверка селектора для просмотров
-        $('#test-views-selector').click(function() {
-            const testUrl = $('#test_url').val();
-            const selector = $('#views_selector').val();
-            const selectorType = $('input[name="selector_type"]:checked').val();
-            
-            if (!testUrl || !selector) {
-                alert('Пожалуйста, введите URL для теста и селектор для просмотров');
-                return;
-            }
-            
-            const button = $(this);
-            button.prop('disabled', true);
-            button.html('<i class="fas fa-spinner fa-spin"></i>');
-            
-            $.post('/test_selector', { 
-                url: testUrl, 
-                selector: selector,
-                selector_type: selectorType
-            })
-                .done(function(data) {
-                    showTestResults('#selector-test-results', '#selector-test-output', data);
-                })
-                .fail(function(jqXHR, textStatus, errorThrown) {
-                    $('#selector-test-results').show();
-                    $('#selector-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
-                })
-                .always(function() {
-                    button.prop('disabled', false);
-                    button.html('Проверить селектор для просмотров');
-                });
-        });
-        
-        // Проверка селектора для даты
-        $('#test-date-selector').click(function() {
-            const testUrl = $('#test_url').val();
-            const selector = $('#date_selector').val();
-            const selectorType = $('input[name="selector_type"]:checked').val();
-            
-            if (!testUrl || !selector) {
-                alert('Пожалуйста, введите URL для теста и селектор для даты');
-                return;
-            }
-            
-            const button = $(this);
-            button.prop('disabled', true);
-            button.html('<i class="fas fa-spinner fa-spin"></i>');
-            
-            $.post('/test_selector', { 
-                url: testUrl, 
-                selector: selector,
-                selector_type: selectorType
-            })
-                .done(function(data) {
-                    showTestResults('#selector-test-results', '#selector-test-output', data);
-                })
-                .fail(function(jqXHR, textStatus, errorThrown) {
-                    $('#selector-test-results').show();
-                    $('#selector-test-output').html(`<div class="alert alert-danger">Ошибка запроса: ${errorThrown}</div>`);
-                })
-                .always(function() {
-                    button.prop('disabled', false);
-                    button.html('Проверить селектор для даты');
-                });
-        });
-        
-        // Обработка клика по кнопке удаления
-        $('.delete-competitor').click(function() {
-            const name = $(this).data('name');
-            
-            Swal.fire({
-                title: 'Удаление конкурента',
-                text: `Вы действительно хотите удалить конкурента "${name}"?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Да, удалить',
-                cancelButtonText: 'Отмена'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    // Отправляем форму на удаление
-                    const form = $('<form>', {
-                        'method': 'post',
-                        'action': `/delete_competitor/${name}`
-                    });
-                    
-                    form.appendTo('body').submit();
-                }
-            });
-        });
-    });
-</script>
-{% endblock %}
+         document.getElementById('testViewsSelectorBtn').addEventListener('click', () => { testSelector('views_selectors', 'viewsTestResult', 'testUrl', 'views_selector_type'); });
+         document.getElementById('testDateSelectorBtn').addEventListener('click', () => { testSelector('date_selectors', 'dateTestResult', 'testUrl', 'date_selector_type'); });
+    </script>
+</body>
+</html>

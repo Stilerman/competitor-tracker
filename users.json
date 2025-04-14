@@ -1,6 +1,16 @@
 {
     "1": {
         "username": "admin",
-        "password_hash": "scrypt:32768:8:1$Pl7hGjZ6OdwcrO72$f8571b0aff8ae895f5f82e186627d68095bbfb6da49ed4ada612e8ab59659210816ba183da5a30a531d8c046de3753f363fef876245ee90648419975552b2355"
+        "password_hash": "scrypt:32768:8:1$Pl7hGjZ6OdwcrO72$f8571b0aff8ae895f5f82e186627d68095bbfb6da49ed4ada612e8ab59659210816ba183da5a30a531d8c046de3753f363fef876245ee90648419975552b2355",
+        "roles": [
+            "Admin"
+        ]
+    },
+    "2": {
+        "username": "seo",
+        "password_hash": "scrypt:32768:8:1$808XNbmRPXjEuM87$41175a3408974476d391f0afade4eff3f15cd228d7d8319d5f5ee33520e7c7a35b84c8cea72bfc9109062ad75d515f27abf90ceaa2aa39ce3c15283c0b0a2f10",
+        "roles": [
+            "Viewer"
+        ]
     }
 }
